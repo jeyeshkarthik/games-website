@@ -6,7 +6,7 @@ export default function Leaderboard({ gameId, refreshTrigger }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`http://localhost:3001/api/scores/${gameId}`)
+    fetch(`/api/scores/${gameId}`)
       .then(res => res.json())
       .then(data => {
         setScores(data);

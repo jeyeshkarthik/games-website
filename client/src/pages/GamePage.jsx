@@ -61,7 +61,7 @@ export default function GamePage() {
 
   const submitScore = async (name, score) => {
     try {
-      await fetch('http://localhost:3001/api/scores', {
+      await fetch('/api/scores', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ player_name: name, game: gameId, score }),

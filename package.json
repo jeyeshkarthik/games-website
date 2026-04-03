@@ -1,11 +1,13 @@
 {
-  "name": "game",
+  "name": "gamezone-monorepo",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "GameZone Full Stack Application",
+  "main": "server/server.js",
   "scripts": {
     "start": "npm run dev",
-    "dev": "concurrently \"npm run dev --prefix client\" \"npm run dev --prefix server\""
+    "dev": "concurrently \"npm run dev --prefix client\" \"npm run dev --prefix server\"",
+    "build": "npm --prefix client install && npm --prefix client run build",
+    "start:prod": "node server/server.js"
   },
   "keywords": [],
   "author": "",

@@ -14,7 +14,7 @@ const GAMES = [
   { id: 'hangman', title: 'Hangman', icon: '🪢', desc: 'Guess the word letter by letter. 6 wrong guesses and it\'s game over!' },
 ];
 
-export default function Home() {
+export default function HomePage() {
   return (
     <div className="container">
       <section className="hero">

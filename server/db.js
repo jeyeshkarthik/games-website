@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Create or open the database file
-const db = new Database(path.join(__dirname, 'gamezone.db'), { verbose: console.log });
+const db = new Database(path.join(__dirname, 'data', 'gamezone.db'), { verbose: console.log });
 
 // Initialize database schema
 db.exec(`
