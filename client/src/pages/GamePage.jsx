@@ -4,7 +4,6 @@ import { ArrowLeft } from 'lucide-react';
 import Leaderboard from '../components/Leaderboard';
 import ScoreModal from '../components/ScoreModal';
 
-// Lazy loading game components
 const games = {
   'tic-tac-toe': lazy(() => import('../games/TicTacToe')),
   'connect-four': lazy(() => import('../games/ConnectFour')),
@@ -31,11 +30,19 @@ const gameTitles = {
   'hangman': '🪢 Hangman',
 };
 
+const DIFFICULTIES = [
+  { id: 'easy', label: 'Easy', emoji: '🌿' },
+  { id: 'medium', label: 'Medium', emoji: '⚡' },
+  { id: 'hard', label: 'Hard', emoji: '🔥' },
+];
+
 export default function GamePage() {
   const { gameId } = useParams();
   const [showModal, setShowModal] = useState(false);
   const [currentScore, setCurrentScore] = useState(0);
   const [refreshLb, setRefreshLb] = useState(0);
+  const [difficulty, setDifficulty] = useState('medium');
+  const [gameKey, setGameKey] = useState(0);
 
   const GameComponent = games[gameId];
 
@@ -46,14 +53,20 @@ export default function GamePage() {
     }
   };
 
+  const handleDifficultyChange = (d) => {
+    if (d === difficulty) return;
+    setDifficulty(d);
+    setGameKey(prev => prev + 1);
+  };
+
   const submitScore = async (name, score) => {
     try {
       await fetch('http://localhost:3001/api/scores', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ player_name: name, game: gameId, score })
+        body: JSON.stringify({ player_name: name, game: gameId, score }),
       });
-      setRefreshLb(prev => prev + 1); // trigger leaderboard refresh
+      setRefreshLb(prev => prev + 1);
     } catch (error) {
       console.error('Error submitting score:', error);
     } finally {
@@ -72,26 +85,44 @@ export default function GamePage() {
           <ArrowLeft size={20} /> Back to Hub
         </Link>
         <h1 style={{ fontSize: '28px', margin: 0 }}>{gameTitles[gameId]}</h1>
-        <div style={{ width: '120px' }}></div> {/* Spacer for centering */}
+        <div style={{ width: '120px' }} />
+      </div>
+
+      {/* Difficulty Selector */}
+      <div className="difficulty-selector">
+        <span className="difficulty-label">Difficulty:</span>
+        {DIFFICULTIES.map(d => (
+          <button
+            key={d.id}
+            className={`difficulty-btn difficulty-${d.id} ${difficulty === d.id ? 'active' : ''}`}
+            onClick={() => handleDifficultyChange(d.id)}
+          >
+            {d.emoji} {d.label}
+          </button>
+        ))}
       </div>
 
       <div className="game-layout">
         <div className="game-container">
           <Suspense fallback={<div className="status-msg">Loading game...</div>}>
-            <GameComponent onGameOver={handleGameOver} />
+            <GameComponent
+              key={gameKey}
+              onGameOver={handleGameOver}
+              difficulty={difficulty}
+            />
           </Suspense>
         </div>
-        
+
         <aside>
           <Leaderboard gameId={gameId} refreshTrigger={refreshLb} />
         </aside>
       </div>
 
       {showModal && (
-        <ScoreModal 
-          score={currentScore} 
-          onSubmit={submitScore} 
-          onCancel={() => setShowModal(false)} 
+        <ScoreModal
+          score={currentScore}
+          onSubmit={submitScore}
+          onCancel={() => setShowModal(false)}
         />
       )}
     </div>
