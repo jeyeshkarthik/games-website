@@ -135,11 +135,14 @@ function checkWinner(board) {
 }
 
 export default function Checkers({ onGameOver, difficulty = 'medium' }) {
+  const nextStarterRef = useRef(Math.random() < 0.5 ? 'player' : 'bot');
+  const [starter, setStarter] = useState(nextStarterRef.current);
+  
   const [board, setBoard] = useState(createBoard);
   const [selected, setSelected] = useState(null);
   const [validDests, setValidDests] = useState([]);
   const [mustJumpFrom, setMustJumpFrom] = useState(null);
-  const [redTurn, setRedTurn] = useState(true);
+  const [redTurn, setRedTurn] = useState(starter === 'player');
   const [gameOver, setGameOver] = useState(false);
   const [winner, setWinner] = useState(null);
   const [aiThinking, setAiThinking] = useState(false);
@@ -226,6 +229,16 @@ export default function Checkers({ onGameOver, difficulty = 'medium' }) {
       }
     }, delay);
   }, [endGame]);
+
+  const initialBotMoveTriggered = useRef(false);
+
+  useEffect(() => {
+    if (starter === 'bot' && !redTurn && !initialBotMoveTriggered.current) {
+      initialBotMoveTriggered.current = true;
+      aiLock.current = true;
+      runAI(board, captured);
+    }
+  }, [starter, redTurn, board, captured, runAI]);
 
   // ---- Player input handler ----
   const handleClick = (idx) => {
@@ -330,11 +343,15 @@ export default function Checkers({ onGameOver, difficulty = 'medium' }) {
 
   const restart = () => {
     aiLock.current = false;
+    const newStarter = starter === 'player' ? 'bot' : 'player';
+    nextStarterRef.current = newStarter;
+    setStarter(newStarter);
+    initialBotMoveTriggered.current = false;
     setBoard(createBoard());
     setSelected(null);
     setValidDests([]);
     setMustJumpFrom(null);
-    setRedTurn(true);
+    setRedTurn(newStarter === 'player');
     setGameOver(false);
     setWinner(null);
     setCaptured({ red: 0, black: 0 });
@@ -348,6 +365,13 @@ export default function Checkers({ onGameOver, difficulty = 'medium' }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '500px' }}>
+      <div style={{
+        fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)',
+        textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px',
+      }}>
+        {starter === 'player' ? '🔴 You start this round' : '⚫ Bot starts this round'}
+      </div>
+
       <div className={`status-msg ${gameOver ? (winner === 'red' ? 'status-win' : 'status-lose') : ''}`}>
         {gameOver
           ? winner === 'red' ? '🎉 You win!' : '😞 AI wins!'
@@ -429,7 +453,7 @@ export default function Checkers({ onGameOver, difficulty = 'medium' }) {
 
       {gameOver && (
         <button className="btn btn-primary" onClick={restart} style={{ marginTop: '20px' }}>
-          Play Again
+          Next Round
         </button>
       )}
     </div>
