@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Connect Four — GameZone</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css"/>
+  <style>
+    .cf-wrapper { display:flex; flex-direction:column; align-items:center; gap:16px; }
+    .cf-board-wrap {
+      background: #1a1a3e;
+      border: 2px solid var(--border);
+      border-radius: 20px;
+      padding: 16px;
+      box-shadow: 0 16px 60px rgba(0,0,0,0.5);
+    }
+    .cf-board {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 10px;
+    }
+    .cf-cell {
+      width: 60px; height: 60px;
+      border-radius: 50%;
+      background: var(--bg);
+      border: 2px solid rgba(255,255,255,0.06);
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .cf-cell.hover-hint { background: rgba(124,58,237,0.2); }
+    .cf-cell.p1 { background: #f59e0b; box-shadow: 0 0 16px rgba(245,158,11,0.4); border-color: #f59e0b; }
+    .cf-cell.p2 { background: #7c3aed; box-shadow: 0 0 16px rgba(124,58,237,0.4); border-color: #7c3aed; }
+    .cf-cell.win-cell { animation: winBlink 0.5s ease infinite alternate; }
+    @keyframes winBlink { from{opacity:1} to{opacity:0.5} }
+    .col-btn {
+      width: 60px; height: 32px;
+      background: rgba(255,255,255,0.04);
+      border: 1px dashed rgba(255,255,255,0.12);
+      border-radius: 8px; cursor: pointer;
+      font-size: 16px; color: var(--text-muted);
+      transition: all 0.2s;
+    }
+    .col-btn:hover { background: rgba(124,58,237,0.2); color: var(--text); }
+    .cf-cols { display: grid; grid-template-columns: repeat(7,1fr); gap: 10px; margin-bottom: 6px; }
+    .controls { display:flex; gap:12px; }
+    .legend { display:flex; gap:16px; align-items:center; }
+    .legend-item { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-muted); }
+    .legend-dot { width:16px; height:16px; border-radius:50%; }
+  </style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="glow-orb glow-1"></div>
+  <div class="glow-orb glow-2"></div>
+
+  <div class="game-page">
+    <div class="game-header">
+      <a href="../index.html" class="back-btn">← Back</a>
+      <div class="game-title-wrap">
+        <h1>🔴 Connect Four</h1>
+        <p>You (Yellow) vs Bot (Purple)</p>
+      </div>
+      <div class="score-display">
+        <div class="score-box"><span class="s-label">You</span><span class="s-val" id="sc-p">0</span></div>
+        <div class="score-box"><span class="s-label">Bot</span><span class="s-val" id="sc-b">0</span></div>
+      </div>
+    </div>
+
+    <div class="status-msg" id="status">Your turn — click a column to drop</div>
+
+    <div class="cf-wrapper">
+      <div class="cf-cols" id="col-btns">
+        <button class="col-btn" onclick="drop(0)">▼</button>
+        <button class="col-btn" onclick="drop(1)">▼</button>
+        <button class="col-btn" onclick="drop(2)">▼</button>
+        <button class="col-btn" onclick="drop(3)">▼</button>
+        <button class="col-btn" onclick="drop(4)">▼</button>
+        <button class="col-btn" onclick="drop(5)">▼</button>
+        <button class="col-btn" onclick="drop(6)">▼</button>
+      </div>
+      <div class="cf-board-wrap">
+        <div class="cf-board" id="board"></div>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div>You</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div>Bot</div>
+      </div>
+    </div>
+
+    <div class="controls" style="margin-top:20px">
+      <button class="btn btn-primary" onclick="resetGame()">New Game</button>
+    </div>
+  </div>
+
+  <script>
+    const ROWS=6, COLS=7;
+    let board, gameOver, scores={p:0,b:0};
+
+    function initBoard() {
+      board = Array.from({length:ROWS}, ()=>Array(COLS).fill(0));
+      gameOver = false;
+    }
+
+    function render() {
+      const el = document.getElementById('board');
+      el.innerHTML = '';
+      for (let r=0;r<ROWS;r++) {
+        for (let c=0;c<COLS;c++) {
+          const cell = document.createElement('div');
+          cell.className = 'cf-cell' + (board[r][c]===1?' p1':board[r][c]===2?' p2':'');
+          cell.id = `cell-${r}-${c}`;
+          el.appendChild(cell);
+        }
+      }
+    }
+
+    function drop(col) {
+      if (gameOver) return;
+      const row = getRow(col);
+      if (row < 0) return;
+      board[row][col] = 1;
+      render();
+      if (checkWin(1)) { winGame(1); return; }
+      if (isDraw()) { drawGame(); return; }
+      setStatus(false);
+      setTimeout(botMove, 500);
+    }
+
+    function getRow(col) {
+      for (let r=ROWS-1;r>=0;r--) if (!board[r][col]) return r;
+      return -1;
+    }
+
+    function botMove() {
+      if (gameOver) return;
+      let col = bestMove();
+      const row = getRow(col);
+      board[row][col] = 2;
+      render();
+      if (checkWin(2)) { winGame(2); return; }
+      if (isDraw()) { drawGame(); return; }
+      setStatus(true);
+    }
+
+    function bestMove() {
+      // Try to win
+      for (let c=0;c<COLS;c++) {
+        const r=getRow(c); if(r<0) continue;
+        board[r][c]=2; if(checkWin(2)){board[r][c]=0;return c;} board[r][c]=0;
+      }
+      // Block player win
+      for (let c=0;c<COLS;c++) {
+        const r=getRow(c); if(r<0) continue;
+        board[r][c]=1; if(checkWin(1)){board[r][c]=0;return c;} board[r][c]=0;
+      }
+      // Prefer center
+      const preferred=[3,2,4,1,5,0,6];
+      for (const c of preferred) { if(getRow(c)>=0) return c; }
+      return 0;
+    }
+
+    function checkWin(p) {
+      // Horizontal
+      for(let r=0;r<ROWS;r++) for(let c=0;c<=COLS-4;c++) if([0,1,2,3].every(i=>board[r][c+i]===p)) return true;
+      // Vertical
+      for(let r=0;r<=ROWS-4;r++) for(let c=0;c<COLS;c++) if([0,1,2,3].every(i=>board[r+i][c]===p)) return true;
+      // Diagonal \
+      for(let r=0;r<=ROWS-4;r++) for(let c=0;c<=COLS-4;c++) if([0,1,2,3].every(i=>board[r+i][c+i]===p)) return true;
+      // Diagonal /
+      for(let r=3;r<ROWS;r++) for(let c=0;c<=COLS-4;c++) if([0,1,2,3].every(i=>board[r-i][c+i]===p)) return true;
+      return false;
+    }
+
+    function isDraw() { return board[0].every(v=>v!==0); }
+
+    function winGame(p) {
+      gameOver=true;
+      const s=document.getElementById('status');
+      if(p===1){scores.p++;s.textContent='🎉 You win!';s.className='status-msg status-win';}
+      else{scores.b++;s.textContent='🤖 Bot wins!';s.className='status-msg status-lose';}
+      document.getElementById('sc-p').textContent=scores.p;
+      document.getElementById('sc-b').textContent=scores.b;
+    }
+
+    function drawGame() {
+      gameOver=true;
+      const s=document.getElementById('status');
+      s.textContent="🤝 It's a draw!";s.className='status-msg status-draw';
+    }
+
+    function setStatus(isPlayer) {
+      const s=document.getElementById('status');
+      s.textContent=isPlayer?'Your turn — click a column':'🤖 Bot is thinking...';
+      s.className='status-msg';
+    }
+
+    function resetGame() { initBoard(); render(); setStatus(true); }
+
+    initBoard(); render();
+  </script>
+</body>
+</html>

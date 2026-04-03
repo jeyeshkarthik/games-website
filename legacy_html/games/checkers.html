@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Checkers — GameZone</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css"/>
+  <style>
+    .checkers-wrap { display:flex; flex-direction:column; align-items:center; gap:20px; }
+    .ck-board {
+      display:grid; grid-template-columns:repeat(8,1fr);
+      border: 2px solid var(--border); border-radius:12px; overflow:hidden;
+      max-width:480px; width:100%;
+    }
+    .ck-sq {
+      aspect-ratio:1;
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer; position:relative;
+      transition:all 0.15s;
+    }
+    .ck-sq.light { background:#2a2050; }
+    .ck-sq.dark  { background:#14102e; }
+    .ck-sq.selected { background:rgba(124,58,237,0.4) !important; }
+    .ck-sq.valid-move { background:rgba(16,185,129,0.25) !important; }
+    .ck-sq.valid-move::after { content:''; position:absolute; width:30%; height:30%; border-radius:50%; background:rgba(16,185,129,0.4); }
+    .ck-piece {
+      width:72%; height:72%; border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
+      font-size:16px; font-weight:900;
+      transition:all 0.2s;
+      position:relative; z-index:2;
+    }
+    .ck-piece.p1 { background:radial-gradient(circle at 35% 35%, #f9a8d4, #e11d48); box-shadow:0 3px 8px rgba(0,0,0,0.4),inset 0 1px 2px rgba(255,255,255,0.3); }
+    .ck-piece.p2 { background:radial-gradient(circle at 35% 35%, #93c5fd, #1d4ed8); box-shadow:0 3px 8px rgba(0,0,0,0.4),inset 0 1px 2px rgba(255,255,255,0.3); }
+    .ck-piece.king::after { content:'♔'; font-size:14px; position:absolute; color:rgba(255,255,0,0.9); text-shadow:0 0 4px #000; }
+    .legend { display:flex; gap:20px; }
+    .leg-item { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-muted); }
+    .leg-dot { width:18px; height:18px; border-radius:50%; }
+  </style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="glow-orb glow-1"></div>
+  <div class="glow-orb glow-2"></div>
+
+  <div class="game-page">
+    <div class="game-header">
+      <a href="../index.html" class="back-btn">← Back</a>
+      <div class="game-title-wrap">
+        <h1>♟️ Checkers</h1>
+        <p>You (Red) vs Bot (Blue)</p>
+      </div>
+      <div class="score-display">
+        <div class="score-box"><span class="s-label">You</span><span class="s-val" id="sc-p">12</span></div>
+        <div class="score-box"><span class="s-label">Bot</span><span class="s-val" id="sc-b">12</span></div>
+      </div>
+    </div>
+
+    <div class="status-msg" id="status">Your turn — click a red piece</div>
+
+    <div class="checkers-wrap">
+      <div class="ck-board" id="board"></div>
+      <div class="legend">
+        <div class="leg-item"><div class="leg-dot" style="background:#e11d48"></div>You (Red)</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#1d4ed8"></div>Bot (Blue)</div>
+        <div class="leg-item">♔ = King</div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" style="margin-top:20px" onclick="initGame()">New Game</button>
+  </div>
+
+  <script>
+    // Board: 0=empty, 1=player, 2=bot, 3=player king, 4=bot king
+    let board, selected=null, validMoves=[], gameOver=false, isPlayerTurn=true;
+
+    function initGame() {
+      gameOver=false; isPlayerTurn=true; selected=null; validMoves=[];
+      board=Array.from({length:8},()=>Array(8).fill(0));
+      // Place bot pieces (top)
+      for(let r=0;r<3;r++) for(let c=0;c<8;c++) if((r+c)%2===1) board[r][c]=2;
+      // Place player pieces (bottom)
+      for(let r=5;r<8;r++) for(let c=0;c<8;c++) if((r+c)%2===1) board[r][c]=1;
+      updateCounts();
+      render();
+      setStatus('Your turn — click a red piece','');
+    }
+
+    function render() {
+      const el=document.getElementById('board');
+      el.innerHTML='';
+      for(let r=0;r<8;r++) for(let c=0;c<8;c++) {
+        const sq=document.createElement('div');
+        sq.className='ck-sq '+(((r+c)%2===0)?'light':'dark');
+        if(selected&&selected[0]===r&&selected[1]===c) sq.classList.add('selected');
+        if(validMoves.some(m=>m.to[0]===r&&m.to[1]===c)) sq.classList.add('valid-move');
+        if(board[r][c]) {
+          const piece=document.createElement('div');
+          const p=board[r][c];
+          piece.className='ck-piece '+(p<=2?(p===1?'p1':'p2'):(p===3?'p1 king':'p2 king'));
+          sq.appendChild(piece);
+        }
+        sq.onclick=()=>clickSq(r,c);
+        el.appendChild(sq);
+      }
+    }
+
+    function clickSq(r,c) {
+      if(gameOver||!isPlayerTurn) return;
+      // If clicking valid move
+      if(selected && validMoves.some(m=>m.to[0]===r&&m.to[1]===c)) {
+        const mv=validMoves.find(m=>m.to[0]===r&&m.to[1]===c);
+        applyMove(mv);
+        selected=null; validMoves=[];
+        // Check if can continue jumping
+        if(mv.captured && getJumps(r,c,board[r][c]).length>0) {
+          selected=[r,c]; validMoves=getJumps(r,c,board[r][c]);
+          render(); return;
+        }
+        updateCounts();
+        if(checkWin()) return;
+        isPlayerTurn=false;
+        setStatus('🤖 Bot is thinking...','');
+        render();
+        setTimeout(botMove,600);
+        return;
+      }
+      // Select piece
+      if(board[r][c]===1||board[r][c]===3) {
+        selected=[r,c];
+        validMoves=getMoves(r,c,board[r][c]);
+        render();
+      }
+    }
+
+    function getMoves(r,c,piece) {
+      const jumps=getJumps(r,c,piece);
+      if(jumps.length>0) return jumps;
+      return getSteps(r,c,piece);
+    }
+
+    function getSteps(r,c,piece) {
+      const dirs=piece===1||piece===3?[[-1,-1],[-1,1]]:[[1,-1],[1,1]];
+      const extra=piece===3||piece===4?[[1,-1],[1,1],[-1,-1],[-1,1]]:dirs;
+      return extra.filter(([dr,dc])=>{
+        const nr=r+dr,nc=c+dc;
+        return nr>=0&&nr<8&&nc>=0&&nc<8&&board[nr][nc]===0;
+      }).map(([dr,dc])=>({from:[r,c],to:[r+dr,c+dc],captured:null}));
+    }
+
+    function getJumps(r,c,piece) {
+      const dirs=piece===1||piece===3?[[-1,-1],[-1,1]]:[[1,-1],[1,1]];
+      const extra=piece===3||piece===4?[[-1,-1],[-1,1],[1,-1],[1,1]]:dirs;
+      const enemy=piece<=2?(piece===1?[2,4]:[1,3]):(piece===3?[2,4]:[1,3]);
+      const jumps=[];
+      extra.forEach(([dr,dc])=>{
+        const mr=r+dr,mc=c+dc,lr=r+2*dr,lc=c+2*dc;
+        if(mr>=0&&mr<8&&mc>=0&&mc<8&&lr>=0&&lr<8&&lc>=0&&lc<8&&enemy.includes(board[mr][mc])&&board[lr][lc]===0)
+          jumps.push({from:[r,c],to:[lr,lc],captured:[mr,mc]});
+      });
+      return jumps;
+    }
+
+    function applyMove(mv) {
+      const [fr,fc]=mv.from,[tr,tc]=mv.to;
+      board[tr][tc]=board[fr][fc]; board[fr][fc]=0;
+      if(mv.captured) board[mv.captured[0]][mv.captured[1]]=0;
+      // King promotion
+      if(board[tr][tc]===1&&tr===0) board[tr][tc]=3;
+      if(board[tr][tc]===2&&tr===7) board[tr][tc]=4;
+    }
+
+    function botMove() {
+      if(gameOver) return;
+      // Get all bot moves
+      const allMoves=[];
+      for(let r=0;r<8;r++) for(let c=0;c<8;c++) {
+        if(board[r][c]===2||board[r][c]===4) {
+          getMoves(r,c,board[r][c]).forEach(m=>allMoves.push(m));
+        }
+      }
+      if(!allMoves.length){checkWin();return;}
+      // Prefer jumps, then kings, then random
+      const jumps=allMoves.filter(m=>m.captured);
+      const mv=jumps.length?jumps[Math.floor(Math.random()*jumps.length)]:allMoves[Math.floor(Math.random()*allMoves.length)];
+      applyMove(mv);
+      // Chain jump
+      if(mv.captured) {
+        const mj=getJumps(mv.to[0],mv.to[1],board[mv.to[0]][mv.to[1]]);
+        if(mj.length>0) { applyMove(mj[0]); }
+      }
+      updateCounts();
+      if(checkWin()) return;
+      isPlayerTurn=true;
+      setStatus('Your turn — click a red piece','');
+      render();
+    }
+
+    function updateCounts() {
+      let p=0,b=0;
+      board.flat().forEach(v=>{ if(v===1||v===3)p++; if(v===2||v===4)b++; });
+      document.getElementById('sc-p').textContent=p;
+      document.getElementById('sc-b').textContent=b;
+    }
+
+    function checkWin() {
+      let p=0,b=0;
+      board.flat().forEach(v=>{ if(v===1||v===3)p++; if(v===2||v===4)b++; });
+      if(p===0){gameOver=true;setStatus('🤖 Bot wins! All your pieces captured','status-lose');render();return true;}
+      if(b===0){gameOver=true;setStatus('🎉 You win! All bot pieces captured','status-win');render();return true;}
+      return false;
+    }
+
+    function setStatus(msg,cls) {
+      const s=document.getElementById('status');
+      s.textContent=msg;
+      s.className='status-msg '+(cls||'');
+    }
+
+    initGame();
+  </script>
+</body>
+</html>

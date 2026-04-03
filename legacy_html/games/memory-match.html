@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Memory Match — GameZone</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css"/>
+  <style>
+    .mem-grid {
+      display: grid;
+      gap: 10px;
+      max-width: 500px; width: 100%;
+    }
+    .mem-grid.easy { grid-template-columns: repeat(4,1fr); }
+    .mem-grid.medium { grid-template-columns: repeat(4,1fr); }
+    .mem-grid.hard { grid-template-columns: repeat(5,1fr); }
+    .mem-card {
+      aspect-ratio: 1;
+      cursor: pointer;
+      perspective: 600px;
+    }
+    .mem-inner {
+      width:100%; height:100%;
+      position:relative;
+      transform-style: preserve-3d;
+      transition: transform 0.4s ease;
+      border-radius: 14px;
+    }
+    .mem-card.flipped .mem-inner { transform: rotateY(180deg); }
+    .mem-card.matched .mem-inner { transform: rotateY(180deg); }
+    .mem-front, .mem-back {
+      position:absolute; inset:0;
+      border-radius: 14px;
+      backface-visibility: hidden;
+      display: flex; align-items:center; justify-content:center;
+    }
+    .mem-front {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      font-size: 28px;
+      background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(6,182,212,0.15));
+    }
+    .mem-back {
+      background: #1a1030;
+      border: 2px solid rgba(124,58,237,0.3);
+      transform: rotateY(180deg);
+      font-size: 36px;
+    }
+    .mem-card.matched .mem-front,
+    .mem-card.matched .mem-back {
+      border-color: #10b981;
+      background: rgba(16,185,129,0.12);
+    }
+    .stats-bar { display:flex; gap:16px; align-items:center; margin-bottom:20px; }
+    .stat-pill {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 100px; padding: 8px 20px;
+      font-size: 14px; font-weight: 600;
+    }
+    .stat-pill span { color: var(--text-muted); font-weight: 400; }
+    .diff-bar { display:flex; gap:8px; margin-bottom:20px; }
+    .diff-btn2 { padding:8px 20px;border-radius:100px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);cursor:pointer;font-family:var(--font);font-size:13px;font-weight:600;transition:all 0.2s; }
+    .diff-btn2.active { background:var(--gradient);color:#fff;border-color:transparent; }
+    .timer-ring {
+      width: 72px; height: 72px;
+      background: conic-gradient(#7c3aed var(--pct, 0%), var(--surface) 0%);
+      border-radius: 50%;
+      display: flex; align-items:center; justify-content:center;
+      position: relative;
+    }
+    .timer-inner {
+      width: 56px; height: 56px;
+      background: var(--bg);
+      border-radius: 50%;
+      display: flex; align-items:center; justify-content:center;
+      font-size: 18px; font-weight: 800;
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="glow-orb glow-1"></div>
+  <div class="glow-orb glow-2"></div>
+
+  <div class="game-page">
+    <div class="game-header">
+      <a href="../index.html" class="back-btn">← Back</a>
+      <div class="game-title-wrap">
+        <h1>🃏 Memory Match</h1>
+        <p>Find all matching pairs!</p>
+      </div>
+      <div class="score-display">
+        <div class="score-box"><span class="s-label">Pairs</span><span class="s-val" id="pairs">0</span></div>
+        <div class="score-box"><span class="s-label">Moves</span><span class="s-val" id="moves">0</span></div>
+      </div>
+    </div>
+
+    <div class="diff-bar">
+      <button class="diff-btn2 active" onclick="setDiff('easy')">Easy (4×4)</button>
+      <button class="diff-btn2" onclick="setDiff('hard')">Hard (5×4)</button>
+    </div>
+
+    <div class="stats-bar">
+      <div class="stat-pill"><span>Time: </span><span id="timer">60</span>s</div>
+      <div class="stat-pill"><span>Best: </span><span id="best-moves">—</span></div>
+    </div>
+
+    <div class="status-msg" id="status">Click any card to start!</div>
+
+    <div class="mem-grid easy" id="grid"></div>
+
+    <div style="display:flex;gap:12px;margin-top:24px">
+      <button class="btn btn-primary" onclick="initGame()">New Game</button>
+    </div>
+  </div>
+
+  <script>
+    const EMOJIS = ['🦊','🐻','🦁','🐯','🦄','🐸','🐙','🦋','🦀','🐳'];
+    let cards, flipped=[], matched=0, moveCount=0, timer, timeLeft, started=false, diff='easy', best=null;
+
+    function setDiff(d) {
+      diff = d;
+      document.querySelectorAll('.diff-btn2').forEach(b=>b.classList.remove('active'));
+      event.target.classList.add('active');
+      initGame();
+    }
+
+    function initGame() {
+      clearInterval(timer); started=false; flipped=[]; matched=0; moveCount=0;
+      const total = diff==='easy'?16:20;
+      const pairs = total/2;
+      const emojis = EMOJIS.slice(0,pairs);
+      cards = shuffle([...emojis,...emojis]);
+      timeLeft = diff==='easy'?60:90;
+      document.getElementById('timer').textContent = timeLeft;
+      document.getElementById('pairs').textContent = '0/'+pairs;
+      document.getElementById('moves').textContent = 0;
+      document.getElementById('status').textContent = 'Click any card to start!';
+      document.getElementById('status').className = 'status-msg';
+      const grid = document.getElementById('grid');
+      grid.className = `mem-grid ${diff==='easy'?'easy':'hard'}`;
+      grid.innerHTML='';
+      cards.forEach((emoji,i)=>{
+        const card = document.createElement('div');
+        card.className='mem-card';
+        card.dataset.i=i;
+        card.innerHTML=`<div class="mem-inner"><div class="mem-front">❓</div><div class="mem-back">${emoji}</div></div>`;
+        card.addEventListener('click',()=>flip(i));
+        grid.appendChild(card);
+      });
+    }
+
+    function flip(i) {
+      if (!started) { started=true; startTimer(); }
+      const card=document.querySelector(`[data-i="${i}"]`);
+      if (!card||card.classList.contains('flipped')||card.classList.contains('matched')||flipped.length>=2) return;
+      card.classList.add('flipped');
+      flipped.push(i);
+      if (flipped.length===2) {
+        moveCount++; document.getElementById('moves').textContent=moveCount;
+        const [a,b]=flipped;
+        if(cards[a]===cards[b]) {
+          matched++;
+          const all = document.querySelectorAll('.mem-card');
+          document.querySelector(`[data-i="${a}"]`).classList.add('matched');
+          document.querySelector(`[data-i="${b}"]`).classList.add('matched');
+          flipped=[];
+          document.getElementById('pairs').textContent=`${matched}/${cards.length/2}`;
+          if(matched===cards.length/2) winGame();
+        } else {
+          setTimeout(()=>{
+            document.querySelector(`[data-i="${a}"]`).classList.remove('flipped');
+            document.querySelector(`[data-i="${b}"]`).classList.remove('flipped');
+            flipped=[];
+          }, 900);
+        }
+      }
+    }
+
+    function startTimer() {
+      timer = setInterval(()=>{
+        timeLeft--;
+        document.getElementById('timer').textContent=timeLeft;
+        if(timeLeft<=0) { clearInterval(timer); loseGame(); }
+      },1000);
+    }
+
+    function winGame() {
+      clearInterval(timer);
+      if(!best||moveCount<best) { best=moveCount; document.getElementById('best-moves').textContent=best+' moves'; }
+      const s=document.getElementById('status');
+      s.textContent=`🎉 You won in ${moveCount} moves! Time left: ${timeLeft}s`;
+      s.className='status-msg status-win';
+    }
+
+    function loseGame() {
+      const s=document.getElementById('status');
+      s.textContent='⏰ Time\'s up! Try again!';
+      s.className='status-msg status-lose';
+    }
+
+    function shuffle(arr) {
+      for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}
+      return arr;
+    }
+
+    initGame();
+  </script>
+</body>
+</html>
