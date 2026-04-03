@@ -25,7 +25,7 @@ app.get('/api/health', (req, res) => {
 app.use(express.static(path.join(__dirname, '../client/dist')));
 
 // Send all other requests to React app
-app.get('*', (req, res) => {
+app.get(/^(?!\/api).*/, (req, res) => {
   res.sendFile(path.join(__dirname, '../client/dist/index.html'));
 });
 
