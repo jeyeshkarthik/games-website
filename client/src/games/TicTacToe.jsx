@@ -1,126 +1,139 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
-const wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+const WINS = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+
+function checkWin(b) {
+  for (const [a, c, d] of WINS) {
+    if (b[a] && b[a] === b[c] && b[a] === b[d]) return { winner: b[a], line: [a, c, d] };
+  }
+  if (b.every(v => v)) return { winner: 'draw', line: [] };
+  return null;
+}
+
+function minimax(b, depth, isMax) {
+  const res = checkWin(b);
+  if (res?.winner === 'O') return 10 - depth;
+  if (res?.winner === 'X') return depth - 10;
+  if (res?.winner === 'draw') return 0;
+  if (isMax) {
+    let best = -Infinity;
+    b.forEach((v, i) => { if (!v) { b[i] = 'O'; best = Math.max(best, minimax(b, depth + 1, false)); b[i] = null; } });
+    return best;
+  } else {
+    let best = Infinity;
+    b.forEach((v, i) => { if (!v) { b[i] = 'X'; best = Math.min(best, minimax(b, depth + 1, true)); b[i] = null; } });
+    return best;
+  }
+}
+
+function getBotMove(board) {
+  let bestScore = -Infinity, move;
+  board.forEach((v, i) => {
+    if (!v) {
+      board[i] = 'O';
+      const s = minimax(board, 0, false);
+      board[i] = null;
+      if (s > bestScore) { bestScore = s; move = i; }
+    }
+  });
+  return move;
+}
 
 export default function TicTacToe({ onGameOver }) {
-  const [board, setBoard] = useState(Array(9).fill(null));
-  const [isPlayerTurn, setIsPlayerTurn] = useState(true);
-  const [gameOver, setGameOver] = useState(false);
-  const [status, setStatus] = useState('Your turn — play X');
-  const [statusClass, setStatusClass] = useState('');
-  const [winLine, setWinLine] = useState([]);
-  
-  // Actually we need to track points across sessions for Tic Tac Toe?
-  // Let's say +100 points for a win, +50 for draw
+  // Track which player starts each round — randomly pick for game 1, then alternate
+  const nextStarterRef = useRef(Math.random() < 0.5 ? 'player' : 'bot');
+
+  const initRound = () => {
+    const starter = nextStarterRef.current;
+    return {
+      board: Array(9).fill(null),
+      isPlayerTurn: starter === 'player',
+      gameOver: false,
+      status: starter === 'player' ? '🔵 Your turn — play X' : '🤖 Bot goes first...',
+      statusClass: '',
+      winLine: [],
+      starter,
+    };
+  };
+
+  const [state, setState] = useState(initRound);
   const [score, setScore] = useState(0);
+  const { board, isPlayerTurn, gameOver, status, statusClass, winLine, starter } = state;
 
-  const checkWin = (b) => {
-    for (const [a,c,d] of wins) {
-      if (b[a] && b[a] === b[c] && b[a] === b[d]) return { winner: b[a], line: [a,c,d] };
-    }
-    if (b.every(v => v)) return { winner: 'draw', line: [] };
-    return null;
-  };
-
-  const minimax = (b, depth, isMax) => {
-    const res = checkWin(b);
-    if (res?.winner === 'O') return 10 - depth;
-    if (res?.winner === 'X') return depth - 10;
-    if (res?.winner === 'draw') return 0;
-
-    if (isMax) {
-      let best = -Infinity;
-      b.forEach((v, i) => {
-        if (!v) { b[i] = 'O'; best = Math.max(best, minimax(b, depth + 1, false)); b[i] = null; }
-      });
-      return best;
-    } else {
-      let best = Infinity;
-      b.forEach((v, i) => {
-        if (!v) { b[i] = 'X'; best = Math.min(best, minimax(b, depth + 1, true)); b[i] = null; }
-      });
-      return best;
-    }
-  };
-
-  const getBotMove = (currentBoard) => {
-    let bestScore = -Infinity;
-    let move;
-    currentBoard.forEach((v, i) => {
-      if (!v) {
-        currentBoard[i] = 'O';
-        const s = minimax(currentBoard, 0, false);
-        currentBoard[i] = null;
-        if (s > bestScore) { bestScore = s; move = i; }
-      }
-    });
-    return move;
-  };
-
-  const playerMove = (i) => {
-    if (gameOver || board[i] || !isPlayerTurn) return;
-    const newBoard = [...board];
-    newBoard[i] = 'X';
-    setBoard(newBoard);
-    setIsPlayerTurn(false);
-  };
-
+  // AI move effect — fires whenever it's the bot's turn
   useEffect(() => {
     const result = checkWin(board);
+
     if (result) {
-      setGameOver(true);
-      setWinLine(result.line);
-      if (result.winner === 'X') {
-        setStatus('🎉 You win!');
-        setStatusClass('status-win');
-        setScore(pre => pre + 100);
-        onGameOver(score + 100);
-      } else if (result.winner === 'O') {
-        setStatus('🤖 Bot wins!');
-        setStatusClass('status-lose');
-      } else {
-        setStatus("🤝 It's a draw!");
-        setStatusClass('status-draw');
-        setScore(pre => pre + 50);
-        onGameOver(score + 50);
-      }
+      const isWin = result.winner === 'X';
+      const isDraw = result.winner === 'draw';
+      setState(prev => ({
+        ...prev,
+        gameOver: true,
+        winLine: result.line,
+        status: isWin ? '🎉 You win!' : isDraw ? "🤝 It's a draw!" : '🤖 Bot wins!',
+        statusClass: isWin ? 'status-win' : isDraw ? 'status-draw' : 'status-lose',
+      }));
+      if (isWin) { const s = score + 100; setScore(s); onGameOver(s); }
+      if (isDraw) { const s = score + 50; setScore(s); onGameOver(s); }
       return;
     }
 
     if (!isPlayerTurn && !gameOver) {
-      setStatus('🤖 Bot is thinking...');
+      setState(prev => ({ ...prev, status: '🤖 Bot is thinking...' }));
       const timer = setTimeout(() => {
         const botIndex = getBotMove([...board]);
         if (botIndex !== undefined) {
           const newBoard = [...board];
           newBoard[botIndex] = 'O';
-          setBoard(newBoard);
-          setIsPlayerTurn(true);
-          setStatus('Your turn — play X');
+          setState(prev => ({
+            ...prev,
+            board: newBoard,
+            isPlayerTurn: true,
+            status: '🔵 Your turn — play X',
+          }));
         }
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [board, isPlayerTurn]);
+  }, [board, isPlayerTurn, gameOver]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const reset = () => {
-    setBoard(Array(9).fill(null));
-    setGameOver(false);
-    setIsPlayerTurn(true);
-    setStatus('Your turn — play X');
-    setStatusClass('');
-    setWinLine([]);
+  const playerMove = (i) => {
+    if (gameOver || board[i] || !isPlayerTurn) return;
+    const newBoard = [...board];
+    newBoard[i] = 'X';
+    setState(prev => ({ ...prev, board: newBoard, isPlayerTurn: false }));
+  };
+
+  const nextRound = () => {
+    // Flip starter for next round
+    nextStarterRef.current = starter === 'player' ? 'bot' : 'player';
+    setState(initRound());
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <div className={`status-msg ${statusClass}`}>{status}</div>
-      <div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
-        <strong>Current Score Session: {score}</strong>
+      {/* Who starts badge */}
+      <div style={{
+        fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)',
+        textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px',
+      }}>
+        {starter === 'player' ? '🔵 You start this round' : '🤖 Bot starts this round'}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', background: 'var(--surface)', padding: '20px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)' }}>
+
+      <div className={`status-msg ${statusClass}`}>{status}</div>
+
+      <div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
+        <strong>Session Score: {score}</strong>
+      </div>
+
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px',
+        background: 'var(--surface)', padding: '20px',
+        borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)',
+      }}>
         {board.map((v, i) => (
-          <div 
+          <div
             key={i}
             onClick={() => playerMove(i)}
             style={{
@@ -129,16 +142,18 @@ export default function TicTacToe({ onGameOver }) {
               border: `2px solid ${v === 'X' ? 'var(--accent)' : v === 'O' ? 'var(--pastel-teal-strong)' : 'var(--border)'}`,
               borderRadius: 'var(--radius-md)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '48px', fontWeight: 'bold', color: v === 'X' ? 'var(--accent)' : '#0d9488',
+              fontSize: '48px', fontWeight: 'bold',
+              color: v === 'X' ? 'var(--accent)' : '#0d9488',
               cursor: (!v && !gameOver && isPlayerTurn) ? 'pointer' : 'default',
-              transition: 'all 0.2s'
+              transition: 'all 0.2s',
             }}
           >
             {v === 'X' ? '✖' : v === 'O' ? '◯' : ''}
           </div>
         ))}
       </div>
-      <button className="btn btn-primary" onClick={reset} style={{ marginTop: '24px' }}>
+
+      <button className="btn btn-primary" onClick={nextRound} style={{ marginTop: '24px' }}>
         Next Round
       </button>
     </div>

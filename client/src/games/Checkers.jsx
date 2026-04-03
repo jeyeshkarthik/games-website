@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
-// Board: 64 squares. Row 0 = top (black start), Row 7 = bottom (red start).
+// Board: 64 squares. Row 0 = top (black/AI), Row 7 = bottom (red/player).
 // Only dark squares (row+col)%2===1 are used.
-// Pieces: 'r'=red, 'R'=red king, 'b'=black, 'B'=black king
+// Pieces: 'r'=red(player), 'R'=red king, 'b'=black(AI), 'B'=black king
 
 const SCORE_BASE = { easy: 100, medium: 160, hard: 250 };
 
@@ -26,8 +26,8 @@ function getPieceMoves(board, idx, jumpOnly = false) {
   const row = Math.floor(idx / 8), col = idx % 8;
   const red = isRed(piece), king = isKing(piece);
   const dirs = [];
-  if (red || king) dirs.push([-1, -1], [-1, 1]);
-  if (!red || king) dirs.push([1, -1], [1, 1]);
+  if (red || king) dirs.push([-1, -1], [-1, 1]);  // red moves up
+  if (!red || king) dirs.push([1, -1], [1, 1]);    // black moves down
 
   const jumps = [], moves = [];
   for (const [dr, dc] of dirs) {
@@ -106,7 +106,7 @@ function minimax(board, depth, alpha, beta, blackTurn) {
 }
 
 function getAIMove(board, difficulty) {
-  const moves = getAllMoves(board, false);
+  const moves = getAllMoves(board, false); // black's moves
   if (!moves.length) return null;
   if (difficulty === 'easy') return moves[Math.floor(Math.random() * moves.length)];
   if (difficulty === 'medium') {
@@ -117,7 +117,7 @@ function getAIMove(board, difficulty) {
     }
     return best;
   }
-  // hard: minimax depth 4
+  // hard: minimax
   let best = moves[0], bestScore = -Infinity;
   for (const m of moves) {
     const s = minimax(applyMove(board, m), 3, -Infinity, Infinity, false);
@@ -127,12 +127,10 @@ function getAIMove(board, difficulty) {
 }
 
 function checkWinner(board) {
-  const redMoves = getAllMoves(board, true);
-  const blackMoves = getAllMoves(board, false);
-  const redCount = board.filter(isRed).length;
-  const blackCount = board.filter(isBlack).length;
-  if (blackCount === 0 || blackMoves.length === 0) return 'red';
-  if (redCount === 0 || redMoves.length === 0) return 'black';
+  const redPieces = board.filter(isRed).length;
+  const blackPieces = board.filter(isBlack).length;
+  if (blackPieces === 0 || getAllMoves(board, false).length === 0) return 'red';
+  if (redPieces === 0 || getAllMoves(board, true).length === 0) return 'black';
   return null;
 }
 
@@ -147,119 +145,200 @@ export default function Checkers({ onGameOver, difficulty = 'medium' }) {
   const [aiThinking, setAiThinking] = useState(false);
   const [captured, setCaptured] = useState({ red: 0, black: 0 });
 
+  // Synchronous ref — set immediately so player can't click while AI runs.
+  // Unlike useState, this blocks clicks BEFORE the next render.
+  const aiLock = useRef(false);
+
+  // Keep latest values accessible in callbacks without stale closures
+  const difficultyRef = useRef(difficulty);
+  const onGameOverRef = useRef(onGameOver);
+  const gameOverRef = useRef(gameOver);
+  difficultyRef.current = difficulty;
+  onGameOverRef.current = onGameOver;
+  gameOverRef.current = gameOver;
+
   const endGame = useCallback((win, b) => {
     setGameOver(true);
     setWinner(win);
     if (win === 'red') {
-      const base = SCORE_BASE[difficulty] || 160;
+      const base = SCORE_BASE[difficultyRef.current] || 160;
       const bonus = b.filter(isBlack).length === 0 ? 50 : 0;
-      setTimeout(() => onGameOver(base + bonus), 300);
+      setTimeout(() => onGameOverRef.current(base + bonus), 300);
     }
-  }, [difficulty, onGameOver]);
+  }, []);
 
-  // AI turn
-  useEffect(() => {
-    if (redTurn || gameOver || aiThinking) return;
+  /**
+   * Run the AI turn. Receives the EXACT board and captured state to use —
+   * no refs, no stale closures, no race conditions.
+   */
+  const runAI = useCallback((currentBoard, currentCaptured) => {
+    // aiLock is already true when this is called
     setAiThinking(true);
-    const delay = difficulty === 'hard' ? 700 : 400;
-    const timer = setTimeout(() => {
-      const move = getAIMove(board, difficulty);
-      if (!move) { endGame('red', board); setAiThinking(false); return; }
+    setRedTurn(false);
 
-      let nb = applyMove(board, move);
-      let newCaptured = { ...captured };
+    const diff = difficultyRef.current;
+    const delay = diff === 'hard' ? 700 : 400;
+
+    setTimeout(() => {
+      // If game ended while AI was "thinking", bail out
+      if (gameOverRef.current) {
+        aiLock.current = false;
+        setAiThinking(false);
+        return;
+      }
+
+      const move = getAIMove(currentBoard, diff);
+      if (!move) {
+        // AI has no moves → player wins
+        aiLock.current = false;
+        setAiThinking(false);
+        endGame('red', currentBoard);
+        return;
+      }
+
+      let nb = applyMove(currentBoard, move);
+      const newCaptured = { ...currentCaptured };
       if (move.isJump) {
         newCaptured.black++;
-        // AI auto-chains all jumps
-        let furtherJumps = getPieceMoves(nb, move.to, true);
-        while (furtherJumps.length > 0) {
-          const next = furtherJumps[0];
+        // Chain all further jumps automatically
+        let further = getPieceMoves(nb, move.to, true);
+        while (further.length > 0) {
+          const next = further[0];
           nb = applyMove(nb, next);
           newCaptured.black++;
-          furtherJumps = getPieceMoves(nb, next.to, true);
+          further = getPieceMoves(nb, next.to, true);
         }
       }
 
-      setCaptured(newCaptured);
+      // Apply AI result to state
       setBoard(nb);
+      setCaptured(newCaptured);
       setSelected(null);
       setValidDests([]);
-      const w = checkWinner(nb);
-      if (w) { endGame(w, nb); } else { setRedTurn(true); }
       setAiThinking(false);
-    }, delay);
-    return () => clearTimeout(timer);
-  }, [redTurn, board, gameOver, aiThinking, difficulty, captured, endGame]);
+      aiLock.current = false; // Release lock before checking winner
 
+      const w = checkWinner(nb);
+      if (w) {
+        endGame(w, nb);
+      } else {
+        setRedTurn(true);
+      }
+    }, delay);
+  }, [endGame]);
+
+  // ---- Player input handler ----
   const handleClick = (idx) => {
-    if (!redTurn || gameOver || aiThinking) return;
+    // Guard: must be player's turn, game active, AI not running
+    if (!redTurn || gameOver || aiLock.current) return;
+
     const piece = board[idx];
     const allMoves = getAllMoves(board, true);
     const hasForceJump = allMoves.some(m => m.isJump);
 
-    // Multi-jump continuation
+    // --- Continuation of a multi-jump ---
     if (mustJumpFrom !== null) {
       const jumps = getPieceMoves(board, mustJumpFrom, true);
       const move = jumps.find(m => m.to === idx);
-      if (move) {
-        const nb = applyMove(board, move);
-        const newCaptured = { ...captured, red: captured.red + 1 };
-        const further = getPieceMoves(nb, move.to, true);
-        if (further.length > 0) {
-          setBoard(nb); setCaptured(newCaptured);
-          setMustJumpFrom(move.to); setSelected(move.to);
-          setValidDests(further.map(m => m.to));
+      if (!move) return; // clicked somewhere invalid — do nothing
+      const nb = applyMove(board, move);
+      const newCaptured = { ...captured, red: captured.red + 1 };
+      const further = getPieceMoves(nb, move.to, true);
+      if (further.length > 0) {
+        // Still more jumps available — stay in multi-jump mode
+        setBoard(nb);
+        setCaptured(newCaptured);
+        setMustJumpFrom(move.to);
+        setSelected(move.to);
+        setValidDests(further.map(m => m.to));
+      } else {
+        // Jump chain complete — hand off to AI
+        setBoard(nb);
+        setCaptured(newCaptured);
+        setMustJumpFrom(null);
+        setSelected(null);
+        setValidDests([]);
+        const w = checkWinner(nb);
+        if (w) {
+          endGame(w, nb);
         } else {
-          setBoard(nb); setCaptured(newCaptured);
-          setMustJumpFrom(null); setSelected(null); setValidDests([]);
-          const w = checkWinner(nb);
-          if (w) endGame(w, nb); else setRedTurn(false);
+          aiLock.current = true; // Lock immediately, before any state update
+          runAI(nb, newCaptured);
         }
       }
       return;
     }
 
-    // Select a piece
+    // --- Select a piece ---
     if (piece && isRed(piece)) {
       const pieceMoves = getPieceMoves(board, idx);
-      const filtered = hasForceJump ? pieceMoves.filter(m => m.isJump) : pieceMoves;
+      const filtered = hasForceJump
+        ? pieceMoves.filter(m => m.isJump)
+        : pieceMoves;
+      // If a jump is forced but this piece has no jumps, refuse selection
+      if (hasForceJump && filtered.length === 0) {
+        setSelected(null);
+        setValidDests([]);
+        return;
+      }
       setSelected(idx);
       setValidDests(filtered.map(m => m.to));
       return;
     }
 
-    // Move selected piece
+    // --- Move selected piece to destination ---
     if (selected !== null && validDests.includes(idx)) {
       const move = getPieceMoves(board, selected).find(m => m.to === idx);
       if (!move) return;
       const nb = applyMove(board, move);
       const newCaptured = { ...captured };
+
       if (move.isJump) {
         newCaptured.red++;
         const further = getPieceMoves(nb, move.to, true);
         if (further.length > 0) {
-          setBoard(nb); setCaptured(newCaptured);
-          setMustJumpFrom(move.to); setSelected(move.to);
+          // Multi-jump: stay on player's turn
+          setBoard(nb);
+          setCaptured(newCaptured);
+          setMustJumpFrom(move.to);
+          setSelected(move.to);
           setValidDests(further.map(m => m.to));
           return;
         }
       }
-      setBoard(nb); setCaptured(newCaptured);
-      setSelected(null); setValidDests([]); setMustJumpFrom(null);
+
+      // Move complete — hand off to AI
+      setBoard(nb);
+      setCaptured(newCaptured);
+      setSelected(null);
+      setValidDests([]);
+      setMustJumpFrom(null);
       const w = checkWinner(nb);
-      if (w) endGame(w, nb); else setRedTurn(false);
+      if (w) {
+        endGame(w, nb);
+      } else {
+        aiLock.current = true; // Lock immediately
+        runAI(nb, newCaptured);
+      }
       return;
     }
 
-    // Deselect
+    // --- Deselect ---
     setSelected(null);
     setValidDests([]);
   };
 
   const restart = () => {
-    setBoard(createBoard()); setSelected(null); setValidDests([]);
-    setMustJumpFrom(null); setRedTurn(true); setGameOver(false);
-    setWinner(null); setCaptured({ red: 0, black: 0 });
+    aiLock.current = false;
+    setBoard(createBoard());
+    setSelected(null);
+    setValidDests([]);
+    setMustJumpFrom(null);
+    setRedTurn(true);
+    setGameOver(false);
+    setWinner(null);
+    setCaptured({ red: 0, black: 0 });
+    setAiThinking(false);
   };
 
   const redCount = board.filter(isRed).length;
@@ -278,15 +357,14 @@ export default function Checkers({ onGameOver, difficulty = 'medium' }) {
           : redTurn ? '🔴 Your turn — click a piece' : '⏳ AI is thinking...'}
       </div>
 
-      {/* Score bar */}
       <div style={{ display: 'flex', gap: '20px', fontSize: '14px', fontWeight: '600', marginBottom: '10px', color: 'var(--text-muted)' }}>
-        <span style={{ color: '#ef4444' }}>🔴 You: {redCount} pieces</span>
+        <span style={{ color: '#ef4444' }}>🔴 You: {redCount}</span>
         <span>|</span>
-        <span>⚫ AI: {blackCount} pieces</span>
-        {captured.red > 0 && <span style={{ color: '#16a34a' }}>✓ Captured: {captured.red}</span>}
+        <span>⚫ AI: {blackCount}</span>
+        {captured.red > 0 && <span style={{ color: '#16a34a' }}>Your captures: {captured.red}</span>}
+        {captured.black > 0 && <span style={{ color: '#6b7280' }}>AI captures: {captured.black}</span>}
       </div>
 
-      {/* Board */}
       <div style={{
         display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)',
         width: '100%', maxWidth: '460px',
@@ -301,36 +379,39 @@ export default function Checkers({ onGameOver, difficulty = 'medium' }) {
           const isDest = validDests.includes(idx);
           const isMustJump = mustJumpFrom === idx;
 
-          let bg = dark ? '#5a7a5a' : '#f5f0e8';
-          if (dark && isSel) bg = '#7c3aed';
-          else if (dark && isMustJump) bg = '#7c3aed';
+          let bg = dark ? '#4a6741' : '#f5f0e8';
+          if (dark && (isSel || isMustJump)) bg = '#7c3aed';
           else if (dark && isDest) bg = '#15803d';
-          else if (dark) bg = '#4a6741';
 
           return (
             <div
               key={idx}
-              onClick={() => dark ? handleClick(idx) : null}
+              onClick={() => dark && handleClick(idx)}
               style={{
                 aspectRatio: '1', background: bg,
-                cursor: dark && redTurn && !gameOver ? 'pointer' : 'default',
+                cursor: dark && redTurn && !gameOver && !aiLock.current ? 'pointer' : 'default',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 position: 'relative', transition: 'background 0.15s',
               }}
             >
               {isDest && !piece && (
-                <div style={{ width: '35%', height: '35%', borderRadius: '50%', background: 'rgba(134,239,172,0.7)', border: '2px solid #86efac' }} />
+                <div style={{
+                  width: '35%', height: '35%', borderRadius: '50%',
+                  background: 'rgba(134,239,172,0.7)', border: '2px solid #86efac',
+                }} />
               )}
               {piece && (
                 <div style={{
                   width: '78%', height: '78%', borderRadius: '50%',
                   background: isRed(piece)
-                    ? `radial-gradient(circle at 35% 35%, #f87171, #b91c1c)`
-                    : `radial-gradient(circle at 35% 35%, #6b7280, #111827)`,
-                  border: isSel ? '3px solid #fbbf24' : isRed(piece) ? '2px solid #991b1c' : '2px solid #374151',
+                    ? 'radial-gradient(circle at 35% 35%, #f87171, #b91c1c)'
+                    : 'radial-gradient(circle at 35% 35%, #6b7280, #111827)',
+                  border: isSel
+                    ? '3px solid #fbbf24'
+                    : isRed(piece) ? '2px solid #991b1c' : '2px solid #374151',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '16px', color: 'rgba(255,255,255,0.9)',
-                  boxShadow: `0 4px 8px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.2)`,
+                  boxShadow: '0 4px 8px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.2)',
                   transform: isSel ? 'scale(1.12)' : 'scale(1)',
                   transition: 'transform 0.15s',
                 }}>

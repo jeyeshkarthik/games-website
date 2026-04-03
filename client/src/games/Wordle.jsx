@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 const WORDS_BY_DIFFICULTY = {
-  easy: ['CHAIR','BREAD','FLAME','GRACE','JUICE','KNIFE','LEMON','MANGO','NOBLE','OCEAN','PEACE','QUEEN','RIVER','SMILE','TIGER','UNCLE','VIVID','XENON','YACHT','ARROW'],
-  medium: ['BLAND','CRIMP','BLAZE','CLASP','DEPOT','FROST','GLINT','HARSH','INFER','JOUST','KNACK','LUSTY','MAXIM','OPTIC','PRISM','QUIRK','RIVET','STOMP','TRAMP','WALTZ'],
-  hard: ['CRYPT','GLYPH','LYMPH','MYRRH','PROXY','PYGMY','SYNTH','TRYST','VYING','BRISK','CRISP','DWARF','EXPEL','FJORD','GRUMP','HEXED','IRKED','JAZZY','KNELT','SCAMP'],
+  easy: ['CHAIR','BREAD','FLAME','GRACE','JUICE','KNIFE','LEMON','MANGO','NOBLE','OCEAN','PEACE','QUEEN','RIVER','SMILE','TIGER','UNCLE','VIVID','XENON','YACHT','ARROW','APPLE','BONUS','CANDY','DANCE','EAGLE','FANCY','GIANT','HAPPY','IDEAL','JELLY','LIGHT','MAGIC','NIGHT','PIANO','QUIET','RAINY','SWEET','ULTRA','VALID','WEIRD','YOUNG','ZEBRA'],
+  medium: ['BLAND','CRIMP','BLAZE','CLASP','DEPOT','FROST','GLINT','HARSH','INFER','JOUST','KNACK','LUSTY','MAXIM','OPTIC','PRISM','QUIRK','RIVET','STOMP','TRAMP','WALTZ','CRANE','STARE','SHARE','TRACE','BRAVE','CRAVE','SHAVE','SLOPE','SWAMP','THUMP','GROAN','DRAPE','BRUNT','CHAFE','NOTCH','PLUMB'],
+  hard: ['CRYPT','GLYPH','LYMPH','MYRRH','PROXY','PYGMY','SYNTH','TRYST','VYING','BRISK','CRISP','DWARF','EXPEL','FJORD','GRUMP','HEXED','IRKED','JAZZY','KNELT','SCAMP','WHIFF','ZILCH','BUXOM','CYNIC','FRISK','KLUTZ','NYMPH','OXIDE','PLAID'],
 };
 
 const KEYS = [
@@ -14,6 +14,19 @@ const KEYS = [
 
 const MAX_GUESSES = { easy: 7, medium: 6, hard: 5 };
 const SCORE_BASE = { easy: 80, medium: 100, hard: 130 };
+
+// Validate word via Free Dictionary API — accepts any real English word
+async function isRealWord(word) {
+  try {
+    const res = await fetch(
+      `https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`,
+      { signal: AbortSignal.timeout(3000) }
+    );
+    return res.ok;
+  } catch {
+    return true; // Network error → fail open (allow the word)
+  }
+}
 
 export default function Wordle({ onGameOver, difficulty = 'medium' }) {
   const maxGuesses = MAX_GUESSES[difficulty] || 6;
@@ -28,16 +41,31 @@ export default function Wordle({ onGameOver, difficulty = 'medium' }) {
       currentGuess: '',
       gameOver: false,
       win: false,
+      error: '',
+      shaking: false,
+      validating: false,
     };
   }, [difficulty]);
 
   const [state, setState] = useState(() => newGame());
-  const { targetWord, guesses, currentGuess, gameOver, win } = state;
+  const { targetWord, guesses, currentGuess, gameOver, win, error, shaking, validating } = state;
 
   useEffect(() => { setState(newGame()); }, [newGame]);
 
-  const submitGuess = useCallback((guess, currentGuesses, target) => {
+  const submitGuess = useCallback(async (guess, currentGuesses, target) => {
     if (guess.length !== 5) return;
+
+    // Show validating state
+    setState(prev => ({ ...prev, validating: true, error: '' }));
+
+    const valid = await isRealWord(guess);
+
+    if (!valid) {
+      setState(prev => ({ ...prev, validating: false, error: 'Not a valid word!', shaking: true }));
+      setTimeout(() => setState(prev => ({ ...prev, error: '', shaking: false })), 700);
+      return;
+    }
+
     const newGuesses = [...currentGuesses, guess];
     const isWin = guess === target;
     const isLose = !isWin && newGuesses.length >= maxGuesses;
@@ -48,29 +76,28 @@ export default function Wordle({ onGameOver, difficulty = 'medium' }) {
       currentGuess: '',
       gameOver: isWin || isLose,
       win: isWin,
+      error: '',
+      shaking: false,
+      validating: false,
     }));
 
     if (isWin) {
       const base = SCORE_BASE[difficulty] || 100;
       const bonus = Math.max(0, (maxGuesses - newGuesses.length) * 15);
-      const finalScore = base + bonus;
-      setTimeout(() => onGameOverRef.current(finalScore), 500);
+      setTimeout(() => onGameOverRef.current(base + bonus), 500);
     }
   }, [maxGuesses, difficulty]);
 
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; }, [state]);
+
   const handleKey = useCallback((key) => {
     setState(prev => {
-      if (prev.gameOver) return prev;
+      if (prev.gameOver || prev.validating) return prev;
       if (key === '⌫' || key === 'Backspace') {
-        return { ...prev, currentGuess: prev.currentGuess.slice(0, -1) };
+        return { ...prev, currentGuess: prev.currentGuess.slice(0, -1), error: '' };
       }
-      if (key === 'Enter') {
-        if (prev.currentGuess.length === 5) {
-          // Trigger submit outside setState
-          return prev; // handled below via ref
-        }
-        return prev;
-      }
+      if (key === 'Enter') return prev; // handled below
       if (prev.currentGuess.length < 5 && /^[A-Z]$/.test(key)) {
         return { ...prev, currentGuess: prev.currentGuess + key };
       }
@@ -78,15 +105,14 @@ export default function Wordle({ onGameOver, difficulty = 'medium' }) {
     });
   }, []);
 
-  // We need a separate ref-based submit to avoid closure issues
-  const stateRef = useRef(state);
-  useEffect(() => { stateRef.current = state; }, [state]);
-
   const handleKeyWithSubmit = useCallback((key) => {
     if (key === 'Enter') {
-      const { currentGuess: cg, guesses: gs, targetWord: tw, gameOver: go } = stateRef.current;
-      if (!go && cg.length === 5) {
+      const { currentGuess: cg, guesses: gs, targetWord: tw, gameOver: go, validating: v } = stateRef.current;
+      if (!go && !v && cg.length === 5) {
         submitGuess(cg, gs, tw);
+      } else if (!go && !v && cg.length < 5) {
+        setState(prev => ({ ...prev, error: 'Not enough letters!', shaking: true }));
+        setTimeout(() => setState(prev => ({ ...prev, error: '', shaking: false })), 700);
       }
       return;
     }
@@ -136,16 +162,39 @@ export default function Wordle({ onGameOver, difficulty = 'medium' }) {
       </div>
 
       <div className={`status-msg ${win ? 'status-win' : gameOver ? 'status-lose' : ''}`}>
-        {win ? `🎉 Got it in ${guesses.length}!` : gameOver ? `😞 Word was "${targetWord}"` : 'Guess the 5-letter word'}
+        {validating
+          ? '🔍 Checking word...'
+          : win ? `🎉 Got it in ${guesses.length}!`
+          : gameOver ? `😞 Word was "${targetWord}"`
+          : 'Guess the 5-letter word'}
       </div>
 
+      {error && (
+        <div style={{
+          background: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5',
+          borderRadius: 'var(--radius-sm)', padding: '6px 16px',
+          fontSize: '13px', fontWeight: '600', marginBottom: '8px',
+          animation: 'fadeIn 0.1s ease',
+        }}>
+          {error}
+        </div>
+      )}
+
       {/* Grid */}
-      <div style={{ display: 'grid', gridTemplateRows: `repeat(${maxGuesses}, 1fr)`, gap: '7px', margin: '16px 0 24px', width: '100%', maxWidth: '310px' }}>
+      <div style={{ display: 'grid', gridTemplateRows: `repeat(${maxGuesses}, 1fr)`, gap: '7px', margin: '10px 0 20px', width: '100%', maxWidth: '310px' }}>
         {Array.from({ length: maxGuesses }).map((_, r) => {
           const g = guesses[r] || (r === guesses.length ? currentGuess : '');
           const submitted = r < guesses.length;
+          const isCurrentRow = r === guesses.length;
+          const shouldShake = isCurrentRow && shaking;
           return (
-            <div key={r} style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '7px' }}>
+            <div
+              key={r}
+              style={{
+                display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '7px',
+                animation: shouldShake ? 'shake 0.5s ease' : 'none',
+              }}
+            >
               {Array.from({ length: 5 }).map((_, c) => {
                 const letter = g[c] || '';
                 let bg = 'var(--surface)', borderColor = 'var(--border)', color = 'var(--text-main)';
@@ -167,6 +216,7 @@ export default function Wordle({ onGameOver, difficulty = 'medium' }) {
                     transform: isActive && letter ? 'scale(1.05)' : 'scale(1)',
                     transition: 'all 0.1s ease',
                     animation: submitted && letter ? `flipIn 0.3s ease ${c * 0.08}s both` : 'none',
+                    opacity: validating && isActive ? 0.6 : 1,
                   }}>
                     {letter}
                   </div>
@@ -191,16 +241,18 @@ export default function Wordle({ onGameOver, difficulty = 'medium' }) {
                 <button
                   key={key}
                   onClick={() => handleKeyWithSubmit(key)}
+                  disabled={validating}
                   style={{
                     padding: key.length > 1 ? '12px 8px' : '12px 0',
                     width: key.length > 1 ? '62px' : '34px',
                     borderRadius: 'var(--radius-sm)',
                     border: '1px solid var(--border)',
                     background: bg, color,
-                    fontWeight: '700', cursor: 'pointer',
+                    fontWeight: '700', cursor: validating ? 'not-allowed' : 'pointer',
                     fontSize: key.length > 1 ? '11px' : '14px',
                     fontFamily: 'var(--font)',
                     transition: 'background 0.2s',
+                    opacity: validating ? 0.6 : 1,
                   }}
                 >
                   {key}
@@ -216,6 +268,22 @@ export default function Wordle({ onGameOver, difficulty = 'medium' }) {
           Play Again
         </button>
       )}
+
+      <style>{`
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          15% { transform: translateX(-6px); }
+          30% { transform: translateX(6px); }
+          45% { transform: translateX(-4px); }
+          60% { transform: translateX(4px); }
+          75% { transform: translateX(-2px); }
+          90% { transform: translateX(2px); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }

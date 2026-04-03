@@ -59,7 +59,7 @@ export default function Minesweeper({ onGameOver }) {
     }
     
     if(currentGrid[r][c] === -1) {
-      // Explode
+      // Explode — reveal all mines, keep flags visible
       currentGrid.forEach((row, ri) => row.forEach((val, ci) => {
         if(val === -1) currentRevealed[ri][ci] = true;
       }));
@@ -102,21 +102,32 @@ export default function Minesweeper({ onGameOver }) {
           {grid.map((row, r) => row.map((val, c) => {
             const isRevealed = revealed[r][c];
             const isFlagged = flagged[r][c];
+            const isMine = val === -1;
+            // Post-game-over cell states:
+            // - mine + flagged correctly → green 🚩
+            // - mine + not flagged → 💣 on red
+            // - not mine + flagged wrongly → ❌ on orange
+            const isWrongFlag = gameOver && isFlagged && !isMine;
+            const isCorrectFlag = gameOver && isFlagged && isMine;
+            let bg = 'var(--pastel-blue)';
+            if (isRevealed) bg = isMine ? '#fca5a5' : 'var(--bg-secondary)';
+            if (isWrongFlag) bg = '#fed7aa'; // orange for wrong flag
+            if (isCorrectFlag) bg = '#bbf7d0'; // green for correct flag
             return (
-              <div 
+              <div
                 key={`${r}-${c}`}
                 onClick={() => click(r, c)}
                 onContextMenu={(e) => toggleFlag(e, r, c)}
                 style={{
                   width: '32px', height: '32px', borderRadius: '4px',
-                  background: isRevealed ? (val === -1 ? '#fca5a5' : 'var(--bg-secondary)') : 'var(--pastel-blue)',
-                  border: `1px solid ${isRevealed ? 'var(--border)' : '#bfdbfe'}`,
+                  background: bg,
+                  border: `1px solid ${isRevealed ? 'var(--border)' : isWrongFlag ? '#f97316' : isCorrectFlag ? '#86efac' : '#bfdbfe'}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontWeight: 'bold', fontSize: '14px', cursor: isRevealed ? 'default' : 'pointer',
                   color: ['transparent', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6', '#f59e0b', '#14b8a6', '#000', '#64748b'][Math.max(0, val)]
                 }}
               >
-                {isRevealed ? (val === -1 ? '💣' : val > 0 ? val : '') : (isFlagged ? '🚩' : '')}
+                {isWrongFlag ? '❌' : isCorrectFlag ? '🚩' : isRevealed ? (isMine ? '💣' : val > 0 ? val : '') : (isFlagged ? '🚩' : '')}
               </div>
             );
           }))}

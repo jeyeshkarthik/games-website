@@ -6,7 +6,7 @@ const WORDS_BY_DIFFICULTY = {
   hard: ['BLANKET','QUARTER','CRYSTAL','DORMANT','EXPRESS','FREIGHT','GLIMPSE','HARMONY','INSIGHT','JOURNEY','LAMPOON','MONARCH','NETWORK','OBSCURE','PATTERN','QUANTUM','RECRUIT','SILENCE','TRIUMPH','UNKNOWN'],
 };
 
-const MAX_WRONG = { easy: 8, medium: 6, hard: 5 };
+const MAX_WRONG = { easy: 6, medium: 6, hard: 6 };
 const SCORE_BASE = { easy: 80, medium: 150, hard: 220 };
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
@@ -39,10 +39,6 @@ function HangmanSVG({ wrong, maxWrong }) {
       {wrong >= 5 && <line x1="125" y1="130" x2="100" y2="165" stroke="var(--text-main)" strokeWidth="3" strokeLinecap="round"/>}
       {/* Right leg */}
       {wrong >= 6 && <line x1="125" y1="130" x2="150" y2="165" stroke="var(--text-main)" strokeWidth="3" strokeLinecap="round"/>}
-      {/* Left foot (easy extra) */}
-      {wrong >= 7 && <line x1="100" y1="165" x2="83"  y2="155" stroke="var(--text-main)" strokeWidth="3" strokeLinecap="round"/>}
-      {/* Right foot (easy extra) */}
-      {wrong >= 8 && <line x1="150" y1="165" x2="167" y2="155" stroke="var(--text-main)" strokeWidth="3" strokeLinecap="round"/>}
     </svg>
   );
 }

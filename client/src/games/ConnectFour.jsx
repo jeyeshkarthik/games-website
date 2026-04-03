@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
 const ROWS = 6, COLS = 7;
 
 export default function ConnectFour({ onGameOver }) {
   const [board, setBoard] = useState(Array.from({length:ROWS}, ()=>Array(COLS).fill(0)));
   const [gameOver, setGameOver] = useState(false);
+  const [isPlayerTurn, setIsPlayerTurn] = useState(true);
   const [status, setStatus] = useState('Your turn — click a column');
   const [statusClass, setStatusClass] = useState('');
   const [score, setScore] = useState(0);
+  const scoreRef = useRef(0); // Always-current score for callbacks
 
   const checkWin = (b, p) => {
     // Horizontal
@@ -46,40 +48,56 @@ export default function ConnectFour({ onGameOver }) {
   };
 
   const drop = (col) => {
-    if (gameOver) return;
+    if (gameOver || !isPlayerTurn) return;
     const row = getRow(board, col);
     if (row < 0) return;
-    
+
+    // Lock player input immediately
+    setIsPlayerTurn(false);
+
     const newBoard = board.map(r => [...r]);
     newBoard[row][col] = 1;
     setBoard(newBoard);
-    
+
     if (checkWin(newBoard, 1)) {
+      const newScore = scoreRef.current + 100;
+      scoreRef.current = newScore;
+      setScore(newScore);
       setGameOver(true); setStatus('🎉 You win!'); setStatusClass('status-win');
-      setScore(s => s + 100); onGameOver(score + 100);
+      onGameOver(newScore);
       return;
     }
     if (isDraw(newBoard)) {
+      const newScore = scoreRef.current + 50;
+      scoreRef.current = newScore;
+      setScore(newScore);
       setGameOver(true); setStatus("🤝 It's a draw!"); setStatusClass('status-draw');
-      setScore(s => s + 50); onGameOver(score + 50);
+      onGameOver(newScore);
       return;
     }
-    
+
     setStatus('🤖 Bot is thinking...');
-    
+
     setTimeout(() => {
       const bc = getBotMoveCol(newBoard);
       const br = getRow(newBoard, bc);
       newBoard[br][bc] = 2;
       setBoard([...newBoard]);
-      
+
       if (checkWin(newBoard, 2)) {
-        setGameOver(true); setStatus('🤖 Bot wins!'); setStatusClass('status-lose'); return;
+        setGameOver(true); setStatus('🤖 Bot wins!'); setStatusClass('status-lose');
+        return;
       }
       if (isDraw(newBoard)) {
+        const newScore = scoreRef.current + 50;
+        scoreRef.current = newScore;
+        setScore(newScore);
         setGameOver(true); setStatus("🤝 It's a draw!"); setStatusClass('status-draw');
-        setScore(s => s + 50); onGameOver(score + 50); return;
+        onGameOver(newScore);
+        return;
       }
+      // Unlock player input
+      setIsPlayerTurn(true);
       setStatus('Your turn — click a column');
     }, 500);
   };
@@ -89,6 +107,7 @@ export default function ConnectFour({ onGameOver }) {
   const reset = () => {
     setBoard(Array.from({length:ROWS}, ()=>Array(COLS).fill(0)));
     setGameOver(false);
+    setIsPlayerTurn(true);
     setStatus('Your turn — click a column');
     setStatusClass('');
   };
@@ -102,7 +121,13 @@ export default function ConnectFour({ onGameOver }) {
       
       <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
         {Array.from({length: COLS}).map((_, c) => (
-          <button key={c} className="btn btn-secondary" style={{ padding: '4px 12px' }} onClick={() => drop(c)}>▼</button>
+          <button
+            key={c}
+            className="btn btn-secondary"
+            style={{ padding: '4px 12px', opacity: (!isPlayerTurn || gameOver) ? 0.4 : 1, cursor: (!isPlayerTurn || gameOver) ? 'default' : 'pointer' }}
+            onClick={() => drop(c)}
+            disabled={!isPlayerTurn || gameOver}
+          >▼</button>
         ))}
       </div>
       
