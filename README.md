@@ -1,5 +1,7 @@
 # GameZone
 
+**🌐 Live Demo:** [https://gamezone-17uj.onrender.com/](https://gamezone-17uj.onrender.com/)
+
 GameZone is a modern, full-stack web application featuring a curated collection of ten classic arcade and logic games. Built using a modern React frontend and a robust Express.js backend, the application provides a seamless, responsive gaming experience with persistent global leaderboards and adjustable difficulty modifiers.
 
 ## Architecture and Technology Stack
