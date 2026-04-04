@@ -21,7 +21,7 @@ export default function HomePage() {
         <h1 className="hero-title gradient-text">GameZone</h1>
         <p className="hero-sub">
           Challenge smart AI bots across 10 beautifully crafted classic games.<br />
-          Climb the global leaderboards and prove your skills.
+          Beat your own high scores and prove your skills.
         </p>
       </section>
 

@@ -1,8 +1,6 @@
 import { useState, lazy, Suspense } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
-import Leaderboard from '../components/Leaderboard';
-import ScoreModal from '../components/ScoreModal';
+import { Trophy, ArrowLeft } from 'lucide-react';
 
 const games = {
   'tic-tac-toe': lazy(() => import('../games/TicTacToe')),
@@ -38,18 +36,19 @@ const DIFFICULTIES = [
 
 export default function GamePage() {
   const { gameId } = useParams();
-  const [showModal, setShowModal] = useState(false);
-  const [currentScore, setCurrentScore] = useState(0);
-  const [refreshLb, setRefreshLb] = useState(0);
   const [difficulty, setDifficulty] = useState('medium');
   const [gameKey, setGameKey] = useState(0);
+  
+  const [highScore, setHighScore] = useState(() => {
+    return parseInt(localStorage.getItem(`highscore-${gameId}`)) || 0;
+  });
 
   const GameComponent = games[gameId];
 
   const handleGameOver = (score) => {
-    if (score > 0) {
-      setCurrentScore(score);
-      setShowModal(true);
+    if (score > highScore) {
+      setHighScore(score);
+      localStorage.setItem(`highscore-${gameId}`, score);
     }
   };
 
@@ -57,21 +56,6 @@ export default function GamePage() {
     if (d === difficulty) return;
     setDifficulty(d);
     setGameKey(prev => prev + 1);
-  };
-
-  const submitScore = async (name, score) => {
-    try {
-      await fetch('/api/scores', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ player_name: name, game: gameId, score }),
-      });
-      setRefreshLb(prev => prev + 1);
-    } catch (error) {
-      console.error('Error submitting score:', error);
-    } finally {
-      setShowModal(false);
-    }
   };
 
   if (!GameComponent) {
@@ -114,17 +98,19 @@ export default function GamePage() {
         </div>
 
         <aside>
-          <Leaderboard gameId={gameId} refreshTrigger={refreshLb} />
+          <div className="leaderboard-panel">
+            <h3 className="lb-title">
+              <Trophy size={20} className="text-accent" />
+              Personal Best
+            </h3>
+            <div className="lb-list" style={{ marginTop: '20px', textAlign: 'center' }}>
+              <span style={{ fontSize: '2.5rem', fontWeight: 'bold', color: 'var(--accent)' }}>
+                {highScore}
+              </span>
+            </div>
+          </div>
         </aside>
       </div>
-
-      {showModal && (
-        <ScoreModal
-          score={currentScore}
-          onSubmit={submitScore}
-          onCancel={() => setShowModal(false)}
-        />
-      )}
     </div>
   );
 }

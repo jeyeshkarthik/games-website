@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 
 // Board: 64 squares. Row 0 = top (black/AI), Row 7 = bottom (red/player).
 // Only dark squares (row+col)%2===1 are used.
